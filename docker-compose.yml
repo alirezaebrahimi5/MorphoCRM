@@ -1,0 +1,139 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: crm_app:latest
+    container_name: crm_app
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/crm
+      SPRING_DATASOURCE_USERNAME: crm_user
+      SPRING_DATASOURCE_PASSWORD: crm_password
+      SPRING_REDIS_HOST: redis
+      SPRING_ELASTICSEARCH_HOST: elasticsearch
+      SPRING_ELASTICSEARCH_PORT: 9200
+    depends_on:
+      - db
+      - redis
+      - elasticsearch
+    volumes:
+      - app_data:/app/data
+
+  db:
+    image: postgres:16
+    container_name: postgres_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: crm
+      POSTGRES_USER: crm_user
+      POSTGRES_PASSWORD: crm_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: redis_cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.2
+    container_name: elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: false
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.10.2
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    depends_on:
+      - elasticsearch
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:latest
+    container_name: zabbix_server
+    environment:
+      DB_SERVER_HOST: db
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix_pass
+    depends_on:
+      - db
+    ports:
+      - "10051:10051"
+
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:latest
+    container_name: zabbix_web
+    environment:
+      ZBX_SERVER_HOST: zabbix_server
+      POSTGRES_USER: zabbix
+      POSTGRES_PASSWORD: zabbix_pass
+    depends_on:
+      - zabbix-server
+    ports:
+      - "8081:8080"
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    depends_on:
+      - db
+
+  redisinsight:
+    image: redisinsight:latest
+    container_name: redisinsight
+    ports:
+      - "8001:8001"
+    depends_on:
+      - redis
+
+volumes:
+  postgres_data:
+  redis_data:
+  elasticsearch_data:
+  grafana_data:
+  app_data:
